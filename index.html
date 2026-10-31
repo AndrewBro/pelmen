@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Пельмені — зворотний відлік</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #14213a;
+      --bg-glow: #1d3159;
+      --butter: #ffd98a;
+      --text: #e9eefb;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: radial-gradient(ellipse at 50% 45%, var(--bg-glow), var(--bg) 70%);
+      color: var(--text);
+      font-family: 'Unbounded', 'Arial Black', system-ui, sans-serif;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #app {
+      position: relative;
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      text-align: center;
+    }
+
+    /* Пельмені (рухаються через JS, щоб їх можна було ловити) */
+    .rain { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+    .dumpling {
+      position: absolute;
+      left: 0;
+      top: 0;
+      line-height: 1;
+      opacity: .9;
+      will-change: transform;
+    }
+
+    /* Рахунок */
+    .score {
+      position: fixed;
+      top: clamp(.8rem, 2.5vw, 1.8rem);
+      left: 0;
+      right: 0;
+      z-index: 3;
+      font-size: clamp(.9rem, 2.2vw, 1.5rem);
+      pointer-events: none;
+    }
+    .score .num {
+      display: inline-block;
+      min-width: 1.2em;
+      font-weight: 700;
+      color: var(--butter);
+      animation: pop .28s ease-out;
+    }
+    @keyframes pop {
+      0%   { transform: scale(1.7); }
+      100% { transform: scale(1); }
+    }
+
+    /* Солдатик */
+    .soldier {
+      position: fixed;
+      left: 0;
+      bottom: 0;
+      width: 80px;
+      height: 90px;
+      z-index: 2;
+      pointer-events: none;
+      will-change: transform;
+    }
+    .soldier svg { display: block; width: 100%; height: 100%; }
+
+    /* Контент */
+    .content { position: relative; z-index: 1; width: 100%; }
+    .label {
+      margin: 0 0 clamp(1rem, 3vw, 2.5rem);
+      font-size: clamp(1rem, 2.6vw, 2rem);
+      font-weight: 400;
+      line-height: 1.3;
+    }
+    .clock {
+      display: flex;
+      justify-content: center;
+      align-items: baseline;
+      font-size: clamp(3rem, 14vw, 15rem);
+      font-weight: 700;
+      line-height: 1;
+      color: var(--butter);
+      text-shadow: 0 0 .25em rgba(255, 217, 138, .25);
+    }
+    .digit { display: inline-block; width: .82em; text-align: center; }
+    .sep   { display: inline-block; width: .38em; text-align: center; transform: translateY(-.06em); opacity: .8; }
+    .hint {
+      margin: clamp(1.2rem, 3.5vw, 3rem) 0 0;
+      font-size: clamp(1rem, 2.6vw, 2rem);
+      font-weight: 400;
+      line-height: 1.3;
+    }
+    .hint b { font-weight: 700; color: var(--butter); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .score .num { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="rain" aria-hidden="true">
+      <span
+        v-for="d in dumplings"
+        :key="d.id"
+        class="dumpling"
+        :style="{
+          fontSize: d.size + 'px',
+          transform: 'translate3d(' + d.x + 'px,' + d.y + 'px,0) rotate(' + d.rot + 'deg)'
+        }"
+      >🥟</span>
+    </div>
+
+    <div class="score" aria-live="polite">
+      Зловлено: <span class="num" :key="score">{{ score }}</span>
+    </div>
+
+    <main class="content">
+      <h1 class="label">До наступних пельменнім лишилось:</h1>
+
+      <div class="clock" role="timer" :aria-label="time">
+        <template v-for="(ch, i) in time" :key="i">
+          <span v-if="ch === ':'" class="sep">:</span>
+          <span v-else class="digit">{{ ch }}</span>
+        </template>
+      </div>
+
+      <p class="hint">Не пропусти пельмені у <b>{{ dayName }}</b></p>
+    </main>
+
+    <div class="soldier" aria-hidden="true" :style="{ transform: 'translateX(' + (soldierX - 40) + 'px)' }">
+      <svg viewBox="0 0 80 90" xmlns="http://www.w3.org/2000/svg">
+        <!-- руки -->
+        <line x1="28" y1="54" x2="17" y2="19" stroke="#4b5d2a" stroke-width="8" stroke-linecap="round"/>
+        <line x1="52" y1="54" x2="63" y2="19" stroke="#4b5d2a" stroke-width="8" stroke-linecap="round"/>
+        <!-- ноги -->
+        <rect x="29" y="74" width="9" height="15" rx="3" fill="#2f3a1a"/>
+        <rect x="42" y="74" width="9" height="15" rx="3" fill="#2f3a1a"/>
+        <!-- тулуб -->
+        <rect x="26" y="48" width="28" height="30" rx="7" fill="#5a6e33"/>
+        <rect x="26" y="62" width="28" height="4" fill="#3a4a1f"/>
+        <!-- голова -->
+        <circle cx="40" cy="37" r="11" fill="#f2c9a0"/>
+        <circle cx="36" cy="38" r="1.5" fill="#222"/>
+        <circle cx="44" cy="38" r="1.5" fill="#222"/>
+        <path d="M36 43 q4 3 8 0" stroke="#a5553a" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        <!-- каска -->
+        <path d="M28 36 a12 12 0 0 1 24 0 z" fill="#3a4a1f"/>
+        <rect x="26" y="34" width="28" height="3" rx="1.5" fill="#2f3a1a"/>
+        <!-- долоні -->
+        <circle cx="17" cy="19" r="4" fill="#f2c9a0"/>
+        <circle cx="63" cy="19" r="4" fill="#f2c9a0"/>
+        <!-- піднос -->
+        <rect x="8" y="10" width="64" height="6" rx="3" fill="#cfd6df"/>
+        <rect x="8" y="10" width="64" height="2" rx="1" fill="#f1f4f8"/>
+      </svg>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.prod.js"></script>
+  <script>
+    const { createApp, ref, computed, onMounted, onBeforeUnmount } = Vue;
+
+    // 1 = понеділок, 4 = четвер; о 18:00 за локальним часом браузера
+    const TARGETS = { 1: 'понеділок', 4: 'четвер' };
+    const HOUR = 18;
+
+    function nextTarget(now) {
+      for (let offset = 0; offset <= 7; offset++) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, HOUR, 0, 0, 0);
+        if (TARGETS[d.getDay()] && d > now) return d;
+      }
+    }
+
+    const pad = n => String(n).padStart(2, '0');
+
+    // Налаштування гри
+    const DUMPLING_COUNT = 7;       // було 28
+    const SOLDIER_W = 80;
+    const SOLDIER_H = 90;
+    const TRAY_TOP = 10;            // відступ підноса від верху солдатика
+    const TRAY_HALF = 32;           // пів-ширини підноса
+    const SOLDIER_SPEED = 560;      // px/с
+
+    createApp({
+      setup() {
+        /* ---------- Годинник ---------- */
+        const now = ref(new Date());
+        let timer;
+
+        const target = computed(() => nextTarget(now.value));
+
+        const time = computed(() => {
+          const total = Math.max(0, Math.floor((target.value - now.value) / 1000));
+          const h = Math.floor(total / 3600);
+          const m = Math.floor((total % 3600) / 60);
+          const s = total % 60;
+          return `${pad(h)}:${pad(m)}:${pad(s)}`;
+        });
+
+        const dayName = computed(() => TARGETS[target.value.getDay()]);
+
+        /* ---------- Гра ---------- */
+        const W = ref(window.innerWidth);
+        const H = ref(window.innerHeight);
+        const soldierX = ref(window.innerWidth / 2);
+        const score = ref(0);
+        const keys = { left: false, right: false };
+
+        const rand = (a, b) => a + Math.random() * (b - a);
+
+        function respawn(d, scattered) {
+          d.size = rand(16, 26);
+          d.x = rand(10, Math.max(20, W.value - d.size - 10));
+          // розкидаємо за верхнім краєм, щоб падали не всі разом
+          d.y = scattered ? -rand(20, H.value * 0.9) : -rand(20, H.value * 0.5);
+          d.speed = rand(45, 85);
+          d.rot = rand(-30, 30);
+          d.spin = rand(-25, 25);
+        }
+
+        const dumplings = ref(
+          Array.from({ length: DUMPLING_COUNT }, (_, i) => {
+            const d = { id: i };
+            respawn(d, true);
+            return d;
+          })
+        );
+
+        const clampSoldier = x => Math.min(W.value - SOLDIER_W / 2, Math.max(SOLDIER_W / 2, x));
+
+        let raf, last = 0;
+
+        function tick(t) {
+          const dt = Math.min(0.05, (t - last) / 1000 || 0);
+          last = t;
+
+          // рух солдатика
+          const dir = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+          if (dir) soldierX.value = clampSoldier(soldierX.value + dir * SOLDIER_SPEED * dt);
+
+          // рух і ловля пельменів
+          const trayY = H.value - SOLDIER_H + TRAY_TOP;
+          for (const d of dumplings.value) {
+            const prevBottom = d.y + d.size;
+            d.y += d.speed * dt;
+            d.rot += d.spin * dt;
+            const bottom = d.y + d.size;
+
+            const centerX = d.x + d.size / 2;
+            const onTray = Math.abs(centerX - soldierX.value) <= TRAY_HALF + d.size / 4;
+
+            if (prevBottom <= trayY && bottom >= trayY && onTray) {
+              score.value++;
+              respawn(d, false);
+            } else if (d.y > H.value) {
+              respawn(d, false);
+            }
+          }
+
+          raf = requestAnimationFrame(tick);
+        }
+
+        function onKeyDown(e) {
+          if (e.key === 'ArrowLeft')  { keys.left = true;  e.preventDefault(); }
+          if (e.key === 'ArrowRight') { keys.right = true; e.preventDefault(); }
+        }
+        function onKeyUp(e) {
+          if (e.key === 'ArrowLeft')  keys.left = false;
+          if (e.key === 'ArrowRight') keys.right = false;
+        }
+        function onResize() {
+          W.value = window.innerWidth;
+          H.value = window.innerHeight;
+          soldierX.value = clampSoldier(soldierX.value);
+        }
+        // на телефоні солдатик іде за пальцем
+        function onTouch(e) {
+          soldierX.value = clampSoldier(e.touches[0].clientX);
+        }
+        function onBlur() { keys.left = keys.right = false; }
+
+        onMounted(() => {
+          timer = setInterval(() => (now.value = new Date()), 250);
+          window.addEventListener('keydown', onKeyDown);
+          window.addEventListener('keyup', onKeyUp);
+          window.addEventListener('resize', onResize);
+          window.addEventListener('blur', onBlur);
+          window.addEventListener('touchstart', onTouch, { passive: true });
+          window.addEventListener('touchmove', onTouch, { passive: true });
+          raf = requestAnimationFrame(tick);
+        });
+
+        onBeforeUnmount(() => {
+          clearInterval(timer);
+          cancelAnimationFrame(raf);
+          window.removeEventListener('keydown', onKeyDown);
+          window.removeEventListener('keyup', onKeyUp);
+          window.removeEventListener('resize', onResize);
+          window.removeEventListener('blur', onBlur);
+          window.removeEventListener('touchstart', onTouch);
+          window.removeEventListener('touchmove', onTouch);
+        });
+
+        return { time, dayName, dumplings, soldierX, score };
+      },
+    }).mount('#app');
+  </script>
+</body>
+</html>
